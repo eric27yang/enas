@@ -1,3 +1,4 @@
+#encoding=utf-8
 import sys
 import os
 import time
@@ -81,12 +82,16 @@ class GeneralController(Controller):
     self._build_sampler()
 
   def _create_params(self):
+    # 参数定义
     initializer = tf.random_uniform_initializer(minval=-0.1, maxval=0.1)
     with tf.variable_scope(self.name, initializer=initializer):
       with tf.variable_scope("lstm"):
         self.w_lstm = []
+        # 每一层
         for layer_id in xrange(self.lstm_num_layers):
+          # layer_i的参数
           with tf.variable_scope("layer_{}".format(layer_id)):
+
             w = tf.get_variable(
               "w", [2 * self.lstm_size, 4 * self.lstm_size])
             self.w_lstm.append(w)
@@ -136,7 +141,7 @@ class GeneralController(Controller):
     log_probs = []
     skip_count = []
     skip_penaltys = []
-
+    # 上一个cell的输出h，上一个cell的状态c
     prev_c = [tf.zeros([1, self.lstm_size], tf.float32) for _ in
               xrange(self.lstm_num_layers)]
     prev_h = [tf.zeros([1, self.lstm_size], tf.float32) for _ in

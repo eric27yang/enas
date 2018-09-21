@@ -1,3 +1,4 @@
+#encoding=utf-8
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,17 +27,22 @@ from src.cifar10.general_child import GeneralChild
 from src.cifar10.micro_controller import MicroController
 from src.cifar10.micro_child import MicroChild
 
+# 获取参数项
 flags = tf.app.flags
 FLAGS = flags.FLAGS
 
 DEFINE_boolean("reset_output_dir", False, "Delete output_dir if exists.")
+# 输入数据文件夹
 DEFINE_string("data_path", "", "")
+# 输出文件夹
 DEFINE_string("output_dir", "", "")
+# 输入数据格式
 DEFINE_string("data_format", "NHWC", "'NHWC' or 'NCWH'")
+# macro/micro
 DEFINE_string("search_for", None, "Must be [macro|micro]")
 
 DEFINE_integer("batch_size", 32, "")
-
+#
 DEFINE_integer("num_epochs", 300, "")
 DEFINE_integer("child_lr_dec_every", 100, "")
 DEFINE_integer("child_num_layers", 5, "")
@@ -60,11 +66,12 @@ DEFINE_float("child_l2_reg", 1e-4, "")
 DEFINE_float("child_lr_max", None, "for lr schedule")
 DEFINE_float("child_lr_min", None, "for lr schedule")
 DEFINE_string("child_skip_pattern", None, "Must be ['dense', None]")
+
+# 固定的child architecture
 DEFINE_string("child_fixed_arc", None, "")
 DEFINE_boolean("child_use_aux_heads", False, "Should we use an aux head")
 DEFINE_boolean("child_sync_replicas", False, "To sync or not to sync.")
 DEFINE_boolean("child_lr_cosine", False, "Use cosine lr schedule")
-
 DEFINE_float("controller_lr", 1e-3, "")
 DEFINE_float("controller_lr_dec_rate", 1.0, "")
 DEFINE_float("controller_keep_prob", 0.5, "")
@@ -80,28 +87,35 @@ DEFINE_integer("controller_num_aggregate", 1, "")
 DEFINE_integer("controller_num_replicas", 1, "")
 DEFINE_integer("controller_train_steps", 50, "")
 DEFINE_integer("controller_forwards_limit", 2, "")
+# controller训练频次
 DEFINE_integer("controller_train_every", 2,
                "train the controller after this number of epochs")
 DEFINE_boolean("controller_search_whole_channels", False, "")
 DEFINE_boolean("controller_sync_replicas", False, "To sync or not to sync.")
+# controller是否训练
 DEFINE_boolean("controller_training", True, "")
 DEFINE_boolean("controller_use_critic", False, "")
-
+# 输出日志的频次
 DEFINE_integer("log_every", 50, "How many steps to log")
+# eval的频次
 DEFINE_integer("eval_every_epochs", 1, "How many epochs to eval")
 
+# 定义ops
 def get_ops(images, labels):
   """
   Args:
     images: dict with keys {"train", "valid", "test"}.
     labels: dict with keys {"train", "valid", "test"}.
   """
+  print("-" * 10 + "get_ops")
 
   assert FLAGS.search_for is not None, "Please specify --search_for"
 
+  # micro controller和child模型
   if FLAGS.search_for == "micro":
     ControllerClass = MicroController
     ChildClass = MicroChild
+  # macro
   else:
     ControllerClass = GeneralController
     ChildClass = GeneralChild
@@ -139,8 +153,9 @@ def get_ops(images, labels):
     num_aggregate=FLAGS.child_num_aggregate,
     num_replicas=FLAGS.child_num_replicas,
   )
-
+  # type-final
   if FLAGS.child_fixed_arc is None:
+    # 定义controller
     controller_model = ControllerClass(
       search_for=FLAGS.search_for,
       search_whole_channels=FLAGS.controller_search_whole_channels,
@@ -184,9 +199,12 @@ def get_ops(images, labels):
       "sample_arc": controller_model.sample_arc,
       "skip_rate": controller_model.skip_rate,
     }
+  # type-search
   else:
+    # 此时FLAGS.controller_training必须为True
     assert not FLAGS.controller_training, (
       "--child_fixed_arc is given, cannot train controller")
+    # 不指定固定controller
     child_model.connect_controller(None)
     controller_ops = None
 
@@ -211,8 +229,9 @@ def get_ops(images, labels):
 
   return ops
 
-
+# 训练入口
 def train():
+  # 读取train, test, valid数据
   if FLAGS.child_fixed_arc is None:
     images, labels = read_data(FLAGS.data_path)
   else:
@@ -220,10 +239,11 @@ def train():
 
   g = tf.Graph()
   with g.as_default():
+    # 获取操作ops
     ops = get_ops(images, labels)
     child_ops = ops["child"]
     controller_ops = ops["controller"]
-
+    # 持久化
     saver = tf.train.Saver(max_to_keep=2)
     checkpoint_saver_hook = tf.train.CheckpointSaverHook(
       FLAGS.output_dir, save_steps=child_ops["num_train_batches"], saver=saver)
@@ -242,6 +262,7 @@ def train():
     with tf.train.SingularMonitoredSession(
       config=config, hooks=hooks, checkpoint_dir=FLAGS.output_dir) as sess:
         start_time = time.time()
+        # num_epochs次迭代
         while True:
           run_ops = [
             child_ops["loss"],
@@ -271,10 +292,13 @@ def train():
             log_string += " mins={:<10.2f}".format(
                 float(curr_time - start_time) / 60)
             print(log_string)
-            
+
+          # eval
           if actual_step % ops["eval_every"] == 0:
+            # type-search
             if (FLAGS.controller_training and
                 epoch % FLAGS.controller_train_every == 0):
+              # 训练controller
               print("Epoch {}: Training controller".format(epoch))
               for ct_step in range(FLAGS.controller_train_steps *
                                     FLAGS.controller_num_aggregate):
@@ -335,7 +359,7 @@ def train():
           if epoch >= FLAGS.num_epochs:
             break
 
-
+# 程序入口
 def main(_):
   print("-" * 80)
   if not os.path.isdir(FLAGS.output_dir):
@@ -347,6 +371,7 @@ def main(_):
     os.makedirs(FLAGS.output_dir)
 
   print("-" * 80)
+  # 标准输出除了在终端输出，还会输出到文件
   log_file = os.path.join(FLAGS.output_dir, "stdout")
   print("Logging to {}".format(log_file))
   sys.stdout = Logger(log_file)
@@ -356,4 +381,5 @@ def main(_):
 
 
 if __name__ == "__main__":
+  # 进入main函数，并执行flag解析
   tf.app.run()
