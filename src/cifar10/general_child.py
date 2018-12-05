@@ -696,9 +696,12 @@ class GeneralChild(Model):
     self.valid_shuffle_acc = tf.to_int32(self.valid_shuffle_acc)
     self.valid_shuffle_acc = tf.reduce_sum(self.valid_shuffle_acc)
 
+  # 关联controller
   def connect_controller(self, controller_model):
+    # 使用controller的采样架构作为架构
     if self.fixed_arc is None:
       self.sample_arc = controller_model.sample_arc
+    # 固定架构
     else:
       fixed_arc = np.array([int(x) for x in self.fixed_arc.split(" ") if x])
       self.sample_arc = fixed_arc

@@ -258,6 +258,7 @@ class GeneralController(Controller):
       anchors_w_1.append(tf.matmul(next_h[-1], self.w_attn_1))
 
     arc_seq = tf.concat(arc_seq, axis=0)
+    # 采样出来的架构
     self.sample_arc = tf.reshape(arc_seq, [-1])
 
     entropys = tf.stack(entropys)

@@ -119,7 +119,7 @@ def get_ops(images, labels):
   else:
     ControllerClass = GeneralController
     ChildClass = GeneralChild
-
+  # 定义child
   child_model = ChildClass(
     images,
     labels,
@@ -153,7 +153,7 @@ def get_ops(images, labels):
     num_aggregate=FLAGS.child_num_aggregate,
     num_replicas=FLAGS.child_num_replicas,
   )
-  # type-final
+  # scripts-final
   if FLAGS.child_fixed_arc is None:
     # 定义controller
     controller_model = ControllerClass(
@@ -183,9 +183,11 @@ def get_ops(images, labels):
       num_aggregate=FLAGS.controller_num_aggregate,
       num_replicas=FLAGS.controller_num_replicas)
 
+    # child关联controller
     child_model.connect_controller(controller_model)
+    # controller关联child
     controller_model.build_trainer(child_model)
-
+    # controller模型ops
     controller_ops = {
       "train_step": controller_model.train_step,
       "loss": controller_model.loss,
@@ -199,7 +201,7 @@ def get_ops(images, labels):
       "sample_arc": controller_model.sample_arc,
       "skip_rate": controller_model.skip_rate,
     }
-  # type-search
+  # scripts-search
   else:
     # 此时FLAGS.controller_training必须为True
     assert not FLAGS.controller_training, (
@@ -207,7 +209,7 @@ def get_ops(images, labels):
     # 不指定固定controller
     child_model.connect_controller(None)
     controller_ops = None
-
+  # 保存child模型ops
   child_ops = {
     "global_step": child_model.global_step,
     "loss": child_model.loss,
@@ -218,7 +220,7 @@ def get_ops(images, labels):
     "optimizer": child_model.optimizer,
     "num_train_batches": child_model.num_train_batches,
   }
-
+  # 全部ops
   ops = {
     "child": child_ops,
     "controller": controller_ops,
@@ -271,7 +273,9 @@ def train():
             child_ops["train_acc"],
             child_ops["train_op"],
           ]
+          # 执行child ops
           loss, lr, gn, tr_acc, _ = sess.run(run_ops)
+          # child迭代步数
           global_step = sess.run(child_ops["global_step"])
 
           if FLAGS.child_sync_replicas:
@@ -280,6 +284,7 @@ def train():
             actual_step = global_step
           epoch = actual_step // ops["num_train_batches"]
           curr_time = time.time()
+          # 输出child执行信息
           if global_step % FLAGS.log_every == 0:
             log_string = ""
             log_string += "epoch={:<6d}".format(epoch)
@@ -295,7 +300,7 @@ def train():
 
           # eval
           if actual_step % ops["eval_every"] == 0:
-            # type-search
+            # scripts-search
             if (FLAGS.controller_training and
                 epoch % FLAGS.controller_train_every == 0):
               # 训练controller
@@ -314,7 +319,7 @@ def train():
                 ]
                 loss, entropy, lr, gn, val_acc, bl, skip, _ = sess.run(run_ops)
                 controller_step = sess.run(controller_ops["train_step"])
-
+                # 输出controller执行信息
                 if ct_step % FLAGS.log_every == 0:
                   curr_time = time.time()
                   log_string = ""
@@ -329,16 +334,19 @@ def train():
                       float(curr_time - start_time) / 60)
                   print(log_string)
 
+              # 10个child模型eval acc
               print("Here are 10 architectures")
               for _ in range(10):
                 arc, acc = sess.run([
                   controller_ops["sample_arc"],
                   controller_ops["valid_acc"],
                 ])
+                # micro
                 if FLAGS.search_for == "micro":
                   normal_arc, reduce_arc = arc
                   print(np.reshape(normal_arc, [-1]))
                   print(np.reshape(reduce_arc, [-1]))
+                # macro
                 else:
                   start = 0
                   for layer_id in range(FLAGS.child_num_layers):
